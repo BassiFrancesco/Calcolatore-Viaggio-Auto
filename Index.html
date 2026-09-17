@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calcolatore Costo Viaggio</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="Style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="logo">🧮</div>
+    <div>
+      <h1>Calcolatore Costo Viaggio</h1>
+      <p>Carburante, mezzo, conducente e pedaggi — auto e camion · versione locale</p>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ===================== COLONNA SINISTRA: INPUT ===================== -->
+    <div class="input-col">
+
+      <!-- VEICOLO -->
+      <div class="card">
+        <h2>🚘 Veicolo</h2>
+        <p class="sub">Digita il nome del veicolo per compilare automaticamente i dati tecnici, oppure scegli una categoria generica.</p>
+
+        <div class="field">
+          <label>Cerca veicolo (tabella ACI 2026 o veicolo salvato)</label>
+          <input type="text" id="vehicleSearch" list="vehicleDatalist" autocomplete="off" placeholder="es. Fiat Panda, Iveco Daily...">
+          <datalist id="vehicleDatalist"></datalist>
+          <div class="hint" id="vehicleSearchHint">Digita almeno due caratteri, poi scegli la versione con motore e CV corretti. Il costo ACI verrà compilato automaticamente e potrai sempre modificarlo.</div>
+          <div class="vehicle-matches" id="vehicleMatches" aria-live="polite"></div>
+        </div>
+
+        <div class="field">
+          <label>Tipo veicolo</label>
+          <div class="seg" id="vehicleTypeSeg">
+            <button type="button" data-val="auto" class="active">Auto</button>
+            <button type="button" data-val="camion">Camion</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Categoria generica (fallback se non trovi il modello esatto)</label>
+          <select id="categorySelect"></select>
+          <div class="hint">Valori indicativi di categoria: verifica sempre libretto/carta di circolazione del tuo veicolo.</div>
+        </div>
+
+        <div class="row3">
+          <div class="field">
+            <label>Alimentazione</label>
+            <select id="fuelType">
+              <option value="benzina">Benzina</option>
+              <option value="diesel">Diesel</option>
+              <option value="gpl">GPL</option>
+              <option value="metano">Metano</option>
+              <option value="elettrico">Elettrico</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Anno modello</label>
+            <input type="number" id="vehicleYear" min="1900" max="2100" placeholder="es. 2024">
+          </div>
+          <div class="field">
+            <label>Cilindrata</label>
+            <input type="text" id="displacement" placeholder="es. 1.6L">
+          </div>
+          <div class="field">
+            <label>Potenza (CV)</label>
+            <input type="number" id="hp" placeholder="es. 120">
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Consumo medio</label>
+            <input type="number" step="0.01" id="consumption" placeholder="es. 5.5">
+          </div>
+          <div class="field">
+            <label>Unità consumo</label>
+            <select id="consumptionUnit">
+              <option value="per100">per 100 km</option>
+              <option value="kml">km per litro</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" id="loadPctField" style="display:none;">
+          <label>Correzione consumo per carico</label>
+          <input type="number" id="loadPct" value="0" placeholder="es. 15">
+          <div class="hint">% di aumento del consumo dovuto al peso trasportato (0 = a vuoto).</div>
+        </div>
+
+        <div class="profile-bar" style="margin-top:16px;">
+          <div class="field">
+            <label>Salva questo veicolo con un nome</label>
+            <input type="text" id="profileName" placeholder="es. Furgone aziendale">
+          </div>
+          <button class="btn primary small" id="btnSaveProfile">💾 Salva</button>
+          <button class="btn small danger" id="btnDeleteProfile">Elimina veicolo salvato</button>
+        </div>
+        <div class="btn-group">
+          <button class="btn small ghost" id="btnExportDb">⬇️ Esporta veicoli salvati (JSON)</button>
+          <button class="btn small ghost" id="btnImportDb">⬆️ Importa veicoli (JSON)</button>
+          <input type="file" id="importFile" accept=".json" style="display:none;">
+        </div>
+        <div class="note" id="profileStatus" style="display:none;"></div>
+      </div>
+
+      <!-- PERCORSO -->
+      <div class="card">
+        <h2>🗺️ Percorso</h2>
+        <p class="sub">Partenza e arrivo (indirizzo sempre facoltativo, serve solo per il link Maps). I km vanno sempre inseriti a mano.</p>
+
+        <div class="checkline">
+          <input type="checkbox" id="roundTrip">
+          <label for="roundTrip" style="margin:0;text-transform:none;font-weight:500;">Andata e ritorno (raddoppia i km)</label>
+        </div>
+
+        <div id="stopsContainer"></div>
+        <div class="btn-group" style="margin-top:6px;">
+          <button class="btn small" id="btnAddStop">+ Aggiungi tappa intermedia</button>
+          <button class="btn small ghost" id="btnMapsLink">📍 Apri itinerario su Google Maps</button>
+        </div>
+        <div class="hint" style="margin-top:8px;">Il link Maps si genera anche con solo partenza e arrivo; le tappe intermedie sono opzionali.</div>
+      </div>
+
+      <!-- MODULO CARBURANTE -->
+      <div class="card module" id="mod-fuel">
+        <div class="card-head">
+          <h2>⛽ Carburante</h2>
+          <label class="toggle"><input type="checkbox" id="fuelEnabled" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <p class="sub">Consumo e unità sono impostati nella sezione Veicolo.</p>
+        <div class="module-body">
+          <div class="field">
+            <label>Prezzo <span id="fuelNameLabel">carburante</span> (<span id="fuelPriceUnitLabel">€/litro</span>)</label>
+            <input type="number" step="0.001" id="fuelPrice">
+            <div class="hint" id="fuelPriceHint"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULO COSTO MEZZO -->
+      <div class="card module" id="mod-vehicleCost">
+        <div class="card-head">
+          <h2>🔧 Costo mezzo</h2>
+          <label class="toggle"><input type="checkbox" id="vehicleCostEnabled" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <p class="sub">Ammortamento, manutenzione, assicurazione e tasse ripartiti sul chilometro.</p>
+        <div class="module-body">
+          <label class="radio-card selected" id="rc-manual">
+            <input type="radio" name="vcMode" value="manual" checked>
+            <div><div class="t">Calcolo manuale (consigliato)</div><div class="d">Ricavato da valore veicolo, km annui, manutenzione e assicurazione.</div></div>
+          </label>
+          <label class="radio-card" id="rc-aci">
+            <input type="radio" name="vcMode" value="aci">
+            <div><div class="t">Da tabella ACI <span class="badge">auto 2026</span></div><div class="d">Il costo/km viene inserito automaticamente scegliendo una versione dall'archivio ACI 2026.</div></div>
+          </label>
+
+          <div id="vc-manual-fields">
+            <div class="row2">
+              <div class="field">
+                <label>Valore di acquisto (€)</label>
+                <input type="number" id="vehicleValue" placeholder="es. 25000">
+                <div class="hint">Prezzo pagato per il veicolo — nuovo o usato al momento dell'acquisto, NON il valore di mercato attuale.</div>
+              </div>
+              <div class="field">
+                <label>Valore residuo stimato (€)</label>
+                <input type="number" id="residualValue" placeholder="es. 3000 (0 se nessuno)">
+                <div class="hint">Valore di rivendita previsto a fine vita utile. Lascia 0 se non lo stimi.</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Km vita utile stimata</label>
+              <input type="number" id="usefulLifeKm" placeholder="es. 200000">
+              <div class="hint" id="usefulLifeHint"></div>
+              <div class="row2" style="margin-top:8px;">
+                <input type="number" id="expectedYears" placeholder="anni di utilizzo previsti (es. 8)">
+                <button type="button" class="btn small ghost" id="btnCalcLife">Calcola km vita utile da anni × km/anno</button>
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>Manutenzione+pneumatici annui (€)</label><input type="number" id="maintenanceAnnual" placeholder="es. 1200"></div>
+              <div class="field"><label>Assicurazione+tasse annue (€)</label><input type="number" id="insuranceAnnual" placeholder="es. 900"></div>
+            </div>
+            <div class="field"><label>Km percorsi annui (stima)</label><input type="number" id="annualKm" placeholder="es. 15000"></div>
+            <div class="field aci-reference">
+              <label>Riferimento ACI caricato</label>
+              <input type="text" id="manualAciReference" disabled placeholder="Scegli una versione ACI per compilare il riferimento">
+              <div class="hint" id="manualAciReferenceHint">I campi manuali restano modificabili; il riferimento ACI è mostrato per confronto.</div>
+            </div>
+          </div>
+
+          <div id="vc-aci-fields" style="display:none;">
+            <div class="field"><label>Costo/km da tabella ACI (€/km)</label><input type="number" step="0.001" id="aciCostPerKm" placeholder="es. 0.350"></div>
+            <div class="checkline">
+              <input type="checkbox" id="aciSubtractFuel" checked>
+              <label for="aciSubtractFuel" style="margin:0;text-transform:none;font-weight:500;">Sottrai automaticamente la quota carburante (già inclusa nel valore ACI) per evitare doppio conteggio</label>
+            </div>
+            <div class="note">Il costo ACI include le principali voci di esercizio su una percorrenza convenzionale di 15.000 km/anno. L'archivio locale contiene le versioni auto 2026 pubblicate in Gazzetta Ufficiale; il campo resta modificabile.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULO CONDUCENTE -->
+      <div class="card module" id="mod-driver">
+        <div class="card-head">
+          <h2>👤 Conducente</h2>
+          <label class="toggle"><input type="checkbox" id="driverEnabled"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <p class="sub">Il tempo di viaggio è consigliato dalla velocità media, ma puoi correggerlo.</p>
+        <div class="module-body">
+          <div class="row2">
+            <div class="field"><label>Tariffa oraria (€/h)</label><input type="number" step="0.5" id="hourlyRate" placeholder="es. 18"></div>
+            <div class="field"><label>Velocità media (km/h)</label><input type="number" id="avgSpeed" value="60"></div>
+          </div>
+          <div class="field">
+            <label>Tempo di viaggio consigliato</label>
+            <input type="text" id="suggestedTime" disabled>
+            <div class="hint">Calcolato da km ÷ velocità media. Il tempo extra carico/scarico inserito per le tappe si aggiunge automaticamente.</div>
+          </div>
+          <div class="field">
+            <label>Correggi manualmente le ore di guida (opzionale)</label>
+            <input type="number" step="0.1" id="manualHoursOverride" placeholder="lascia vuoto per usare il calcolo automatico">
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULO PEDAGGI -->
+      <div class="card module" id="mod-tolls">
+        <div class="card-head">
+          <h2>🛣️ Pedaggi</h2>
+          <label class="toggle"><input type="checkbox" id="tollsEnabled"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="module-body">
+          <div class="field"><label>Importo totale pedaggi (€)</label><input type="number" step="0.01" id="tollsAmount" placeholder="es. 12.50"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===================== COLONNA DESTRA: RISULTATI ===================== -->
+    <div class="results-col">
+      <div class="card">
+        <h2>📊 Risultato</h2>
+        <div class="total-box">
+          <div class="n" id="totalCost">0,00 €</div>
+          <div class="l">Costo totale viaggio</div>
+        </div>
+        <div class="kmcost"><b id="costPerKm">0,00 €</b> al km &nbsp;·&nbsp; <span id="totalKmDisplay">0</span> km totali</div>
+
+        <canvas id="chart" height="220"></canvas>
+
+        <div id="breakdownList" style="margin-top:12px;"></div>
+
+        <details class="formulas">
+          <summary>Mostra il dettaglio dei calcoli</summary>
+          <div id="formulasList"></div>
+        </details>
+
+        <div class="btn-group" style="margin-top:16px;">
+          <button class="btn primary" id="btnExportPdf" style="flex:1;">📄 Esporta PDF</button>
+        </div>
+        <div class="note" id="downloadStatus" style="display:none;"></div>
+      </div>
+
+      <footer class="disclaimer">
+        Valori di consumo/costo di categoria e prezzi carburante sono indicativi e sempre modificabili.<br>
+        I dati salvati (veicoli, ultimo prezzo carburante) restano su questo computer/browser — usa "Esporta JSON" per portarli su un altro dispositivo.<br>
+        Strumento a scopo indicativo, non sostituisce documentazione fiscale o contrattuale.
+      </footer>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="Vehicle database.js"></script>
+<script src="Aci 2026 database.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
