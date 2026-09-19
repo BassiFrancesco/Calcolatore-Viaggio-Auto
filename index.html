@@ -19,7 +19,7 @@
   </header>
 
   <div class="grid">
-    <!-- ===================== COLONNA SINISTRA: INPUT capito? si===================== -->
+    <!-- ===================== COLONNA SINISTRA: INPUT ===================== -->
     <div class="input-col">
 
       <!-- VEICOLO -->
@@ -162,36 +162,48 @@
           </label>
 
           <div id="vc-manual-fields">
-            <div class="row2">
-              <div class="field">
-                <label>Valore di acquisto (€)</label>
-                <input type="number" id="vehicleValue" placeholder="es. 25000">
-                <div class="hint">Prezzo pagato per il veicolo — nuovo o usato al momento dell'acquisto, NON il valore di mercato attuale.</div>
+            <div class="checkline">
+              <input type="checkbox" id="manualDirectCostToggle">
+              <label for="manualDirectCostToggle" style="margin:0;text-transform:none;font-weight:500;">Salta i calcoli: inserisco direttamente il costo/km</label>
+            </div>
+            <div class="field" id="manualDirectCostField" style="display:none;">
+              <label>Costo/km personalizzato (€/km)</label>
+              <input type="number" step="0.001" id="manualDirectCostPerKm" placeholder="es. 0.280">
+              <div class="hint">Questo valore sostituisce interamente il calcolo sottostante (ammortamento, manutenzione, ecc.).</div>
+            </div>
+
+            <div id="vc-manual-breakdown">
+              <div class="row2">
+                <div class="field">
+                  <label>Valore di acquisto (€)</label>
+                  <input type="number" id="vehicleValue" placeholder="es. 25000">
+                  <div class="hint">Prezzo pagato per il veicolo — nuovo o usato al momento dell'acquisto, NON il valore di mercato attuale.</div>
+                </div>
+                <div class="field">
+                  <label>Valore residuo stimato (€)</label>
+                  <input type="number" id="residualValue" placeholder="es. 3000 (0 se nessuno)">
+                  <div class="hint">Valore di rivendita previsto a fine vita utile. Lascia 0 se non lo stimi.</div>
+                </div>
               </div>
               <div class="field">
-                <label>Valore residuo stimato (€)</label>
-                <input type="number" id="residualValue" placeholder="es. 3000 (0 se nessuno)">
-                <div class="hint">Valore di rivendita previsto a fine vita utile. Lascia 0 se non lo stimi.</div>
+                <label>Km vita utile stimata</label>
+                <input type="number" id="usefulLifeKm" placeholder="es. 200000">
+                <div class="hint" id="usefulLifeHint"></div>
+                <div class="row2" style="margin-top:8px;">
+                  <input type="number" id="expectedYears" placeholder="anni di utilizzo previsti (es. 8)">
+                  <button type="button" class="btn small ghost" id="btnCalcLife">Calcola km vita utile da anni × km/anno</button>
+                </div>
               </div>
-            </div>
-            <div class="field">
-              <label>Km vita utile stimata</label>
-              <input type="number" id="usefulLifeKm" placeholder="es. 200000">
-              <div class="hint" id="usefulLifeHint"></div>
-              <div class="row2" style="margin-top:8px;">
-                <input type="number" id="expectedYears" placeholder="anni di utilizzo previsti (es. 8)">
-                <button type="button" class="btn small ghost" id="btnCalcLife">Calcola km vita utile da anni × km/anno</button>
+              <div class="row2">
+                <div class="field"><label>Manutenzione+pneumatici annui (€)</label><input type="number" id="maintenanceAnnual" placeholder="es. 1200"></div>
+                <div class="field"><label>Assicurazione+tasse annue (€)</label><input type="number" id="insuranceAnnual" placeholder="es. 900"></div>
               </div>
-            </div>
-            <div class="row2">
-              <div class="field"><label>Manutenzione+pneumatici annui (€)</label><input type="number" id="maintenanceAnnual" placeholder="es. 1200"></div>
-              <div class="field"><label>Assicurazione+tasse annue (€)</label><input type="number" id="insuranceAnnual" placeholder="es. 900"></div>
-            </div>
-            <div class="field"><label>Km percorsi annui (stima)</label><input type="number" id="annualKm" placeholder="es. 15000"></div>
-            <div class="field aci-reference">
-              <label>Riferimento ACI caricato</label>
-              <input type="text" id="manualAciReference" disabled placeholder="Scegli una versione ACI per compilare il riferimento">
-              <div class="hint" id="manualAciReferenceHint">I campi manuali restano modificabili; il riferimento ACI è mostrato per confronto.</div>
+              <div class="field"><label>Km percorsi annui (stima)</label><input type="number" id="annualKm" placeholder="es. 15000"></div>
+              <div class="field aci-reference">
+                <label>Riferimento ACI caricato</label>
+                <input type="text" id="manualAciReference" disabled placeholder="Scegli una versione ACI per compilare il riferimento">
+                <div class="hint" id="manualAciReferenceHint">I campi manuali restano modificabili; il riferimento ACI è mostrato per confronto.</div>
+              </div>
             </div>
           </div>
 
@@ -224,8 +236,12 @@
             <div class="hint">Calcolato da km ÷ velocità media. Il tempo extra carico/scarico inserito per le tappe si aggiunge automaticamente.</div>
           </div>
           <div class="field">
-            <label>Correggi manualmente le ore di guida (opzionale)</label>
-            <input type="number" step="0.1" id="manualHoursOverride" placeholder="lascia vuoto per usare il calcolo automatico">
+            <label>Correggi manualmente il tempo di guida (opzionale)</label>
+            <div class="row2">
+              <input type="number" min="0" step="1" id="manualHoursOverrideH" placeholder="ore">
+              <input type="number" min="0" max="59" step="1" id="manualHoursOverrideM" placeholder="minuti">
+            </div>
+            <div class="hint">Lascia entrambi i campi vuoti per usare il calcolo automatico (km ÷ velocità media + tempi extra).</div>
           </div>
         </div>
       </div>
