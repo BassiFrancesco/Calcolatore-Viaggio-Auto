@@ -433,6 +433,10 @@
         vehicleCost = aciCost * totalKm;
         vehicleDescription = `ACI ${aciCost.toFixed(4)} €/km tutto incluso`;
       }
+    } else if ($("#vehicleCostEnabled").checked && $("#manualDirectCostToggle").checked) {
+      const directCost = toNumber($("#manualDirectCostPerKm").value);
+      vehicleCost = directCost * totalKm;
+      vehicleDescription = `costo/km personalizzato: ${directCost.toFixed(3)} €/km`;
     } else if ($("#vehicleCostEnabled").checked) {
       const value = toNumber($("#vehicleValue").value);
       const residual = toNumber($("#residualValue").value);
@@ -448,7 +452,12 @@
     const speed = toNumber($("#avgSpeed").value);
     const automaticHours = speed > 0 ? totalKm / speed + extraHours : extraHours;
     $("#suggestedTime").value = formatHours(automaticHours);
-    const driverHours = toNumber($("#manualHoursOverride").value) || automaticHours;
+    const overrideHRaw = $("#manualHoursOverrideH").value;
+    const overrideMRaw = $("#manualHoursOverrideM").value;
+    const hasManualOverride = overrideHRaw !== "" || overrideMRaw !== "";
+    const driverHours = hasManualOverride
+      ? toNumber(overrideHRaw) + toNumber(overrideMRaw) / 60
+      : automaticHours;
     const driverCost = $("#driverEnabled").checked ? driverHours * toNumber($("#hourlyRate").value) : 0;
     const tollsCost = $("#tollsEnabled").checked ? toNumber($("#tollsAmount").value) : 0;
     const total = fuelCost + vehicleCost + driverCost + tollsCost;
@@ -458,10 +467,38 @@
     $("#totalKmDisplay").textContent = number.format(totalKm);
 
     const items = [
-      { label: "Carburante", amount: fuelCost, color: "#f59e0b", visible: fuelEnabled },
-      { label: "Mezzo", amount: vehicleCost, color: "#2563eb", visible: $("#vehicleCostEnabled").checked },
-      { label: "Conducente", amount: driverCost, color: "#0891b2", visible: $("#driverEnabled").checked },
-      { label: "Pedaggi", amount: tollsCost, color: "#15803d", visible: $("#tollsEnabled").checked },
+      {
+        label: "Carburante",
+        amount: fuelCost,
+        color: "#f59e0b",
+        visible: fuelEnabled,
+        detail: fuelEnabled
+          ? `${number.format(fuelAmount)} ${FUEL_LABEL_UNIT[$("#fuelType").value] || "unità"} × ${euro.format(fuelPrice)}`
+          : "",
+      },
+      {
+        label: "Mezzo",
+        amount: vehicleCost,
+        color: "#2563eb",
+        visible: $("#vehicleCostEnabled").checked,
+        detail: vehicleDescription,
+      },
+      {
+        label: "Conducente",
+        amount: driverCost,
+        color: "#0891b2",
+        visible: $("#driverEnabled").checked,
+        detail: $("#driverEnabled").checked
+          ? `${formatHours(driverHours)} × ${euro.format(toNumber($("#hourlyRate").value))}/h${hasManualOverride ? " (tempo corretto a mano)" : ""}`
+          : "",
+      },
+      {
+        label: "Pedaggi",
+        amount: tollsCost,
+        color: "#15803d",
+        visible: $("#tollsEnabled").checked,
+        detail: $("#tollsEnabled").checked ? "Importo inserito manualmente" : "",
+      },
     ].filter((item) => item.visible);
 
     latestCalculation = {
@@ -495,7 +532,7 @@
       `Distanza totale: ${number.format(totalKm)} km${$("#roundTrip").checked ? " (andata e ritorno)" : ""}.`,
       fuelEnabled ? `Carburante: ${number.format(fuelAmount)} ${FUEL_LABEL_UNIT[$("#fuelType").value] || "unità"} × ${euro.format(fuelPrice)}.` : "Carburante disattivato.",
       $("#vehicleCostEnabled").checked ? `Costo mezzo: ${vehicleDescription || "dati manuali da completare"}.` : "Costo mezzo disattivato.",
-      $("#driverEnabled").checked ? `Conducente: ${number.format(driverHours)} ore × ${euro.format(toNumber($("#hourlyRate").value))}.` : "Conducente disattivato.",
+      $("#driverEnabled").checked ? `Conducente: ${formatHours(driverHours)} × ${euro.format(toNumber($("#hourlyRate").value))}/h.` : "Conducente disattivato.",
     ];
     $("#formulasList").replaceChildren(...formulas.map((text) => {
       const item = document.createElement("div");
@@ -603,22 +640,220 @@
 
   function exportPdf() {
     if (!window.jspdf?.jsPDF) {
-      setStatus("#downloadStatus", "L’esportazione PDF non è disponibile senza connessione. Puoi stampare la pagina dal browser.");
+      setStatus("#downloadStatus", "L’esportazione PDF richiede che le librerie esterne siano state caricate (serve una connessione internet al primo utilizzo).");
       return;
     }
+    calculate();
+    if (!latestCalculation || !latestCalculation.items.length) {
+      setStatus("#downloadStatus", "Attiva almeno un modulo di costo prima di esportare il PDF.");
+      return;
+    }
+
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-    pdf.setFontSize(18);
-    pdf.text("Calcolatore Costo Viaggio", 16, 20);
-    pdf.setFontSize(11);
-    pdf.text(`Costo totale: ${$("#totalCost").textContent}`, 16, 32);
-    pdf.text(`Distanza: ${$("#totalKmDisplay").textContent} km`, 16, 40);
-    let y = 52;
-    $$("#breakdownList .breakdown-row").forEach((row) => {
-      pdf.text(`${row.textContent.trim()}`, 16, y);
-      y += 8;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 16;
+    const contentWidth = pageWidth - marginX * 2;
+    const primary = [37, 99, 235];
+    const dark = [23, 26, 33];
+    const muted = [96, 103, 115];
+    const lightBg = [241, 243, 247];
+    const white = [255, 255, 255];
+    const now = new Date();
+
+    doc.setProperties({
+      title: "Riepilogo Costo Viaggio",
+      subject: "Calcolatore Costo Viaggio - auto e camion",
+      creator: "Calcolatore Costo Viaggio",
     });
-    pdf.save("costo-viaggio.pdf");
+
+    function ensureSpace(neededY, currentY) {
+      if (currentY + neededY > pageHeight - 20) {
+        doc.addPage();
+        return 20;
+      }
+      return currentY;
+    }
+
+    function sectionTitle(text, y) {
+      y = ensureSpace(10, y);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...primary);
+      doc.text(text.toUpperCase(), marginX, y);
+      doc.setDrawColor(...primary);
+      doc.setLineWidth(0.4);
+      doc.line(marginX, y + 1.6, marginX + 32, y + 1.6);
+      return y + 8;
+    }
+
+    function keyValueGrid(rows, y) {
+      const labelWidth = 44;
+      rows.forEach(([label, value]) => {
+        const lines = doc.splitTextToSize(String(value || "—"), contentWidth - labelWidth);
+        y = ensureSpace(lines.length * 4.3 + 2, y);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(...muted);
+        doc.text(label.toUpperCase(), marginX, y);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.setTextColor(...dark);
+        doc.text(lines, marginX + labelWidth, y);
+        y += Math.max(5.5, lines.length * 4.3);
+      });
+      return y + 3;
+    }
+
+    // ===== Intestazione =====
+    doc.setFillColor(...primary);
+    doc.rect(0, 0, pageWidth, 30, "F");
+    doc.setTextColor(...white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("Calcolatore Costo Viaggio", marginX, 15);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Riepilogo dettagliato del costo del viaggio", marginX, 22);
+    doc.setFontSize(9);
+    const dateStr = `${now.toLocaleDateString("it-IT")} · ${now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
+    doc.text(dateStr, pageWidth - marginX, 15, { align: "right" });
+
+    let y = 40;
+
+    // ===== Veicolo =====
+    y = sectionTitle("Veicolo", y);
+    const modelLabel = $("#vehicleSearch").value.trim() || selectedCategory()?.label || "—";
+    y = keyValueGrid([
+      ["Tipo veicolo", vehicleType === "auto" ? "Auto" : "Camion"],
+      ["Modello / categoria", modelLabel],
+      ["Alimentazione", fuelName($("#fuelType").value)],
+      ["Cilindrata", $("#displacement").value || "—"],
+      ["Potenza", $("#hp").value ? `${$("#hp").value} CV` : "—"],
+      [
+        "Consumo dichiarato",
+        $("#consumption").value
+          ? `${$("#consumption").value} ${$("#consumptionUnit").value === "kml" ? "km/l" : `${FUEL_LABEL_UNIT[$("#fuelType").value] || "unità"}/100 km`}`
+          : "—",
+      ],
+    ], y);
+
+    // ===== Percorso =====
+    y = sectionTitle("Percorso", y);
+    const placeNames = stops.map((stop) => stop.querySelector(".stop-place").value.trim()).filter(Boolean);
+    y = keyValueGrid([
+      ["Itinerario", placeNames.length >= 2 ? placeNames.join("   →   ") : "Indirizzi non indicati"],
+      ["Andata e ritorno", $("#roundTrip").checked ? "Sì" : "No"],
+      ["Distanza totale", `${number.format(latestCalculation.totalKm)} km`],
+      ["Tempo di viaggio", formatHours(latestCalculation.driverHours)],
+    ], y);
+
+    // ===== Tabella costi =====
+    y = sectionTitle("Scomposizione dei costi", y);
+    const colVoce = 34;
+    const colImporto = 30;
+    const colDettaglio = contentWidth - colVoce - colImporto;
+
+    y = ensureSpace(12, y);
+    doc.setFillColor(...primary);
+    doc.rect(marginX, y, contentWidth, 7.5, "F");
+    doc.setTextColor(...white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text("VOCE", marginX + 2, y + 5.2);
+    doc.text("DETTAGLIO", marginX + colVoce + 2, y + 5.2);
+    doc.text("IMPORTO", marginX + contentWidth - 2, y + 5.2, { align: "right" });
+    y += 7.5;
+
+    latestCalculation.items.forEach((item, index) => {
+      const detailLines = doc.splitTextToSize(item.detail || "—", colDettaglio - 4);
+      const rowH = Math.max(7.5, detailLines.length * 4 + 3);
+      y = ensureSpace(rowH, y);
+      doc.setFillColor(...(index % 2 === 0 ? white : lightBg));
+      doc.rect(marginX, y, contentWidth, rowH, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...dark);
+      doc.text(item.label, marginX + 2, y + 5);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text(detailLines, marginX + colVoce + 2, y + 5);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...dark);
+      doc.text(euro.format(item.amount), marginX + contentWidth - 2, y + 5, { align: "right" });
+      y += rowH;
+    });
+
+    y = ensureSpace(20, y);
+    doc.setDrawColor(...primary);
+    doc.setLineWidth(0.6);
+    doc.line(marginX, y + 1, marginX + contentWidth, y + 1);
+    y += 6;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...primary);
+    doc.text("TOTALE", marginX + 2, y + 4);
+    doc.text(euro.format(latestCalculation.total), marginX + contentWidth - 2, y + 4, { align: "right" });
+    y += 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...muted);
+    const costPerKm = latestCalculation.totalKm > 0 ? latestCalculation.total / latestCalculation.totalKm : 0;
+    doc.text(`Costo al chilometro: ${euro.format(costPerKm)}`, marginX + 2, y);
+    y += 10;
+
+    // ===== Grafico a torta =====
+    let chartImg = null;
+    try {
+      if (chart && latestCalculation.items.length) chartImg = chart.toBase64Image();
+    } catch {
+      chartImg = null;
+    }
+    if (chartImg) {
+      const imgSize = 62;
+      y = ensureSpace(imgSize + 14, y);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...dark);
+      doc.text("Ripartizione grafica dei costi", marginX, y + 4);
+      doc.addImage(chartImg, "PNG", marginX, y + 8, imgSize, imgSize);
+      y += imgSize + 16;
+    }
+
+    // ===== Dettaglio calcoli =====
+    y = sectionTitle("Dettaglio dei calcoli", y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...muted);
+    $$("#formulasList .f-item").forEach((el) => {
+      const lines = doc.splitTextToSize(el.textContent, contentWidth);
+      lines.forEach((line) => {
+        y = ensureSpace(5, y);
+        doc.text(line, marginX, y);
+        y += 4.6;
+      });
+      y += 1.5;
+    });
+
+    // ===== Piè di pagina su ogni pagina =====
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p += 1) {
+      doc.setPage(p);
+      doc.setDrawColor(...lightBg);
+      doc.setLineWidth(0.3);
+      doc.line(marginX, pageHeight - 14, pageWidth - marginX, pageHeight - 14);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(...muted);
+      doc.text("Documento generato a scopo indicativo — valori inseriti manualmente o precompilati su base statistica.", marginX, pageHeight - 9);
+      doc.text(`Pagina ${p} di ${pageCount}`, pageWidth - marginX, pageHeight - 9, { align: "right" });
+    }
+
+    doc.save(`costo-viaggio-${now.toISOString().slice(0, 10)}.pdf`);
+    setStatus("#downloadStatus", "PDF generato correttamente.");
   }
 
   function bindEvents() {
@@ -631,6 +866,12 @@
     });
     $("#fuelType").addEventListener("change", () => { updateFuelPresentation(true); calculate(); });
     $$("input[name='vcMode']").forEach((input) => input.addEventListener("change", setVehicleCostMode));
+    $("#manualDirectCostToggle").addEventListener("change", () => {
+      const direct = $("#manualDirectCostToggle").checked;
+      $("#vc-manual-breakdown").style.display = direct ? "none" : "block";
+      $("#manualDirectCostField").style.display = direct ? "block" : "none";
+      calculate();
+    });
     ["#fuelEnabled", "#vehicleCostEnabled", "#driverEnabled", "#tollsEnabled"].forEach((selector) => $(selector).addEventListener("change", () => { syncModules(); calculate(); }));
     $$("input, select").forEach((input) => input.addEventListener("input", calculate));
     $("#btnAddStop").addEventListener("click", addIntermediateStop);
